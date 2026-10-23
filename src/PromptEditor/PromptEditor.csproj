@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>PromptEditor</AssemblyName>
+    <RootNamespace>PromptEditor</RootNamespace>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <Version>0.1.0</Version>
+    <Description>A lightweight Markdown prompt editor for Copilot CLI.</Description>
+  </PropertyGroup>
+</Project>
