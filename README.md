@@ -29,17 +29,17 @@ This installs into `%LOCALAPPDATA%\PromptEditor` and sets the user-level `COPILO
 For manual configuration, or a portable build downloaded from the repository's Actions artifacts:
 
 ```powershell
-$env:COPILOT_EDITOR = '"C:\path with spaces\PromptEditor.exe"'
+$env:COPILOT_EDITOR = 'C:\path with spaces\PromptEditor.exe'
 copilot
 ```
 
 To persist that command for future terminals:
 
 ```powershell
-[Environment]::SetEnvironmentVariable('COPILOT_EDITOR', '"C:\path with spaces\PromptEditor.exe"', 'User')
+[Environment]::SetEnvironmentVariable('COPILOT_EDITOR', 'C:\path with spaces\PromptEditor.exe', 'User')
 ```
 
-Copilot checks `COPILOT_EDITOR`, `VISUAL`, then `EDITOR`. Using `COPILOT_EDITOR` leaves your other tools' default editor alone. Do not use `start` or a launcher that exits early: Copilot must wait for this editor to close.
+Copilot checks `COPILOT_EDITOR`, `VISUAL`, then `EDITOR`. Using `COPILOT_EDITOR` leaves your other tools' default editor alone. Store the executable path without embedded double quotes, even when it contains spaces; the single quotes above are PowerShell string delimiters, not part of the value. Do not use `start` or a launcher that exits early: Copilot must wait for this editor to close.
 
 ## Keyboard shortcuts
 

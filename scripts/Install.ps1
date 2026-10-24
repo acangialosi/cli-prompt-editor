@@ -14,8 +14,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $executable = Join-Path $InstallDirectory 'PromptEditor.exe'
-# Quote the executable because Copilot appends its temporary prompt-file argument.
-$editorCommand = '"' + $executable + '"'
+# Copilot resolves the executable directly; embedded quotes become part of its name.
+$editorCommand = $executable
 if ($ConfigureCopilot) {
     [Environment]::SetEnvironmentVariable('COPILOT_EDITOR', $editorCommand, 'User')
     $env:COPILOT_EDITOR = $editorCommand
