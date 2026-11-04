@@ -8,4 +8,10 @@
     <Version>0.1.0</Version>
     <Description>A lightweight Markdown prompt editor for Copilot CLI.</Description>
   </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="PromptEditor.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Markdig" Version="1.4.1" />
+  </ItemGroup>
 </Project>
