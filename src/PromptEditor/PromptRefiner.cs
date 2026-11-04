@@ -342,6 +342,11 @@ internal static class PromptRefiner
         }
         catch (OperationCanceledException)
         {
+        }
+
+        // The kill callback can end the process before WaitForExitAsync observes cancellation.
+        if (limit.IsCancellationRequested)
+        {
             cancellation.ThrowIfCancellationRequested();
             throw new PromptRefinerException(
                 $"Copilot CLI did not respond within {Timeout.TotalMinutes:0} minutes.");
