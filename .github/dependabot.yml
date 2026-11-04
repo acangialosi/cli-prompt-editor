@@ -1,0 +1,23 @@
+version: 2
+updates:
+  # Keeps NuGet package references (Markdig, test packages) current. The 7-day cooldown lets
+  # brand-new releases settle before an update PR is opened.
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+
+  # Keeps the SHA-pinned workflow actions current, as one grouped weekly pull request that must
+  # pass the same required checks as any other change.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns:
+          - "*"

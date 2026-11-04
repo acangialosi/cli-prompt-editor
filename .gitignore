@@ -4,3 +4,10 @@ artifacts/
 .vs/
 *.user
 TestResults/
+
+# Privacy: Copilot session logs, pasted-image attachments, and credentials
+events.jsonl
+session-state/
+**/Attachments/
+.env
+*.pfx
