@@ -1,0 +1,148 @@
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "37 7 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security-secrets:
+    name: security-secrets
+    runs-on: ubuntu-latest
+    env:
+      # Upgrades are manual, reviewed PRs: take the digest from the release's official
+      # gitleaks_<version>_checksums.txt. See docs/security-checks.md.
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require full history
+        run: |
+          if [ "$(git rev-parse --is-shallow-repository)" != "false" ]; then
+            echo "::error::Repository is shallow; the secret scan needs full history."
+            exit 1
+          fi
+
+      - name: Install pinned gitleaks
+        run: |
+          set -euo pipefail
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            --output "$RUNNER_TEMP/$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$archive"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$archive" | sha256sum --check --strict
+          mkdir -p "$RUNNER_TEMP/gitleaks"
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/gitleaks" gitleaks
+          "$RUNNER_TEMP/gitleaks/gitleaks" version
+
+      # Scans every fetched ref with gitleaks' built-in rules. Nothing is sent anywhere: the
+      # scan is local and the JSON report stays in RUNNER_TEMP (it is never uploaded).
+      - name: Scan full history
+        run: |
+          # Errors are handled explicitly so findings and scanner failures stay distinguishable.
+          set +e -uo pipefail
+          # Repository- or environment-supplied configs could weaken the rules, so only the
+          # built-in config is allowed.
+          unset GITLEAKS_CONFIG GITLEAKS_CONFIG_TOML
+          if [ -e .gitleaks.toml ]; then
+            echo "::error::.gitleaks.toml is not allowed; the scan uses the built-in rules."
+            exit 1
+          fi
+
+          report="$RUNNER_TEMP/gitleaks-report.json"
+          rm -f "$report"
+          # Exit code 2 = findings; any other non-zero code is a scanner error.
+          "$RUNNER_TEMP/gitleaks/gitleaks" git . \
+            --log-opts="--all" \
+            --redact \
+            --no-banner \
+            --ignore-gitleaks-allow \
+            --exit-code 2 \
+            --report-format json \
+            --report-path "$report"
+          status=$?
+
+          if [ "$status" -ne 0 ] && [ "$status" -ne 2 ]; then
+            echo "::error::gitleaks failed with exit code $status."
+            exit 1
+          fi
+          if ! count=$(jq -e 'if type == "array" then length else error("report is not an array") end' "$report"); then
+            echo "::error::gitleaks report is missing or malformed."
+            exit 1
+          fi
+          if [ "$status" -eq 2 ] || [ "$count" -ne 0 ]; then
+            echo "::error::gitleaks found $count potential secret(s). Values are not printed."
+            jq -r '.[] | "RuleID=\(.RuleID) File=\(.File) StartLine=\(.StartLine) Commit=\(.Commit)"' "$report"
+            exit 1
+          fi
+          echo "No secrets found."
+
+  security-dependencies:
+    name: security-dependencies
+    runs-on: windows-latest
+    env:
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: 8.0.x
+
+      # NU1900 = vulnerability data could not be fetched, NU1901-NU1904 = low..critical
+      # advisory, NU1905 = audit source has no vulnerability data. All fail the restore.
+      - name: Restore with NuGet audit enforced
+        run: >-
+          dotnet restore PromptEditor.sln --force-evaluate --no-cache
+          -p:NuGetAudit=true -p:NuGetAuditMode=all -p:NuGetAuditLevel=low
+          -p:WarningsAsErrors="NU1900%3BNU1901%3BNU1902%3BNU1903%3BNU1904%3BNU1905"
+
+      - name: List vulnerable packages
+        if: ${{ !cancelled() }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $output = dotnet list PromptEditor.sln package --vulnerable --include-transitive --format json
+          if ($LASTEXITCODE -ne 0) {
+            Write-Output "::error::dotnet list package --vulnerable failed with exit code $LASTEXITCODE."
+            exit 1
+          }
+          $report = ($output | Out-String) | ConvertFrom-Json
+          if (-not $report.projects) {
+            Write-Output "::error::dotnet list package --vulnerable returned no projects."
+            exit 1
+          }
+          $findings = foreach ($project in $report.projects) {
+            foreach ($framework in @($project.frameworks)) {
+              foreach ($package in @($framework.topLevelPackages) + @($framework.transitivePackages)) {
+                foreach ($vulnerability in @($package.vulnerabilities)) {
+                  if ($null -ne $vulnerability) {
+                    [pscustomobject]@{
+                      Project  = Split-Path -Leaf $project.path
+                      Package  = $package.id
+                      Version  = $package.resolvedVersion
+                      Severity = $vulnerability.severity
+                      Advisory = $vulnerability.advisoryurl
+                    }
+                  }
+                }
+              }
+            }
+          }
+          if ($findings) {
+            $findings | Format-Table -AutoSize | Out-String -Width 400 | Write-Output
+            Write-Output "::error::Vulnerable NuGet packages found."
+            exit 1
+          }
+          Write-Output "No vulnerable packages found."
