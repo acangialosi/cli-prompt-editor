@@ -11,7 +11,7 @@ internal static class Program
             MessageBox.Show(
                 "Usage: PromptEditor.exe <prompt-file>\n\n" +
                 "Set COPILOT_EDITOR to this app, then press Ctrl+G in Copilot CLI.\n" +
-                "The editor waits until you choose Use prompt or Cancel.",
+                "The editor waits until you choose Submit Prompt or close the window.",
                 "Prompt Editor", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return 2;
         }

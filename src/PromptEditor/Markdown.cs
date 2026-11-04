@@ -7,6 +7,32 @@ public readonly record struct TextEdit(
 
 public static class Markdown
 {
+    public static TextEdit? ContinueLine(string text, int start, int length)
+    {
+        if (length != 0)
+            return null;
+        var from = start == 0 ? 0 : text.LastIndexOf('\n', start - 1) + 1;
+        var to = text.IndexOf('\n', start);
+        if (to < 0)
+            to = text.Length;
+        var match = Regex.Match(text[from..to],
+            @"^(?<indent>[ \t]*)(?:(?<quote>(?:>[ \t]?)+)|(?<bullet>[-+*]) (?<task>\[[ xX]\] )?|(?<number>\d{1,9})(?<separator>[.)]) )(?<content>.*)$");
+        if (!match.Success || start < from + match.Groups["content"].Index)
+            return null;
+        if (match.Groups["content"].Length == 0)
+            return new(from, to - from, "", from, 0);
+        var prefix = match.Groups["indent"].Value;
+        if (match.Groups["quote"].Success)
+            prefix += match.Groups["quote"].Value;
+        else if (match.Groups["bullet"].Success)
+            prefix += match.Groups["bullet"].Value + " " + (match.Groups["task"].Success ? "[ ] " : "");
+        else
+            prefix += (long.Parse(match.Groups["number"].Value,
+                System.Globalization.CultureInfo.InvariantCulture) + 1).ToString(
+                System.Globalization.CultureInfo.InvariantCulture) + match.Groups["separator"].Value + " ";
+        return new(start, 0, "\n" + prefix, start + 1 + prefix.Length, 0);
+    }
+
     public static TextEdit Wrap(string text, int start, int length, string marker, string placeholder = "text")
     {
         var selected = text.Substring(start, length);
@@ -47,6 +73,33 @@ public static class Markdown
         var fence = new string('`', Math.Max(3, longestRun + 1));
         var replacement = fence + "\n" + content + "\n" + fence;
         return new(from, to - from, replacement, from + fence.Length + 1, content.Length);
+    }
+
+    public static TextEdit List(string text, int start, int length, bool numbered)
+    {
+        var (from, to) = LineRange(text, start, length);
+        var lines = text[from..to].Split('\n');
+        var pattern = numbered ? @"^\d+\. " : @"^[-+*] ";
+        var remove = lines.All(line => Regex.IsMatch(line, pattern));
+        var result = string.Join("\n", lines.Select((line, index) =>
+        {
+            var content = Regex.Replace(line, @"^(?:[-+*] |\d+\. )", "");
+            return remove ? content : (numbered ? $"{index + 1}. " : "- ") + content;
+        }));
+        return new(from, to - from, result, from, result.Length);
+    }
+
+    public static TextEdit Heading(string text, int start, int length, int level)
+    {
+        if (level is < 0 or > 6)
+            throw new ArgumentOutOfRangeException(nameof(level));
+        var (from, to) = LineRange(text, start, length);
+        var lines = text[from..to].Split('\n');
+        var prefix = level == 0 ? "" : new string('#', level) + " ";
+        var remove = level == 0 || lines.All(line => line.StartsWith(prefix, StringComparison.Ordinal));
+        var result = string.Join("\n", lines.Select(line =>
+            (remove ? "" : prefix) + Regex.Replace(line, @"^#{1,6} ", "")));
+        return new(from, to - from, result, from, result.Length);
     }
 
     public static TextEdit Link(string text, int start, int length)
